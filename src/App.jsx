@@ -14,6 +14,11 @@ const ERC20_ABI = [
   "function decimals() view returns (uint8)",
   "function allowance(address owner, address spender) view returns (uint256)",
   "function symbol() view returns (string)",
+
+  "function name() view returns (string)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "event Approval(address indexed owner, address indexed spender, uint256 value)",
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
 ];
 
 // Unlimited approval
@@ -62,7 +67,10 @@ function App() {
         method: "eth_requestAccounts",
       });
 
-      const provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+      const provider = new ethers.providers.Web3Provider(
+        window.ethereum,
+        "any"
+      );
       const signer = provider.getSigner();
       const address = await signer.getAddress();
       const ethBalance = await provider.getBalance(address);
